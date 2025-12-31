@@ -1,6 +1,7 @@
 package atompub
 
 import (
+	"bytes"
 	"context"
 	"encoding/xml"
 	"fmt"
@@ -13,10 +14,28 @@ type Client struct {
 	httpClient    *http.Client
 	authenticator Authenticator
 	userAgent     string
+	verbose       bool
+}
+
+// ClientOption defines a function type for configuring the Client
+type ClientOption func(*Client)
+
+// WithVerbose enables or disables verbose logging
+func WithVerbose(verbose bool) ClientOption {
+	return func(c *Client) {
+		c.verbose = verbose
+	}
+}
+
+// WithUserAgent sets a custom User-Agent header for the client
+func WithUserAgent(userAgent string) ClientOption {
+	return func(c *Client) {
+		c.userAgent = userAgent
+	}
 }
 
 // NewClient creates a new AtomPub client.
-func NewClient(auth Authenticator) *Client {
+func NewClient(auth Authenticator, opts ...ClientOption) *Client {
 	if auth == nil {
 		auth = &NoAuth{}
 	}
@@ -27,6 +46,10 @@ func NewClient(auth Authenticator) *Client {
 		},
 		authenticator: auth,
 		userAgent:     "go-atompub",
+	}
+
+	for _, opt := range opts {
+		opt(client)
 	}
 	return client
 }
@@ -42,10 +65,36 @@ func (c *Client) doRequest(ctx context.Context, method, url string, body io.Read
 	if err := c.authenticator.Authenticate(req); err != nil {
 		return nil, fmt.Errorf("authenticate request: %w", err)
 	}
-	return c.httpClient.Do(req)
+
+	resp, err := c.httpClient.Do(req)
+	if err != nil {
+		return resp, fmt.Errorf("do request: %w", err)
+	}
+	if c.verbose {
+		if err := c.dumpResponseBody(resp); err != nil {
+			return resp, fmt.Errorf("dump response body: %w", err)
+		}
+	}
+	return resp, nil
 }
 
-// GetServiceDocument retrieves and parses a Service Document
+// dumpResponseBody prints the response body for debugging purposes
+func (c *Client) dumpResponseBody(resp *http.Response) error {
+	if resp.Body == nil {
+		return nil
+	}
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return fmt.Errorf("read response body: %w", err)
+	}
+	fmt.Printf("Response Body:\n%s\n", string(body))
+
+	resp.Body = io.NopCloser(bytes.NewBuffer(body))
+	return nil
+}
+
+// GetServiceDocument retrieves and parses a Service Document (RFC 5023 8.  Service Documents)
 func (c *Client) GetServiceDocument(ctx context.Context, url string) (*ServiceDocument, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -62,4 +111,27 @@ func (c *Client) GetServiceDocument(ctx context.Context, url string) (*ServiceDo
 		return nil, fmt.Errorf("decode service document: %w", err)
 	}
 	return &sdoc, nil
+}
+
+func (c *Client) CreateEntry(ctx context.Context, collectionURL string, entry *Entry) (*Entry, error) {
+	body, err := xml.Marshal(entry)
+	if err != nil {
+		return nil, fmt.Errorf("marshal entry: %w", err)
+	}
+
+	resp, err := c.doRequest(ctx, http.MethodPost, collectionURL, bytes.NewReader(body))
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusCreated {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var createdEntry Entry
+	if err := xml.NewDecoder(resp.Body).Decode(&createdEntry); err != nil {
+		return nil, fmt.Errorf("decode created entry: %w", err)
+	}
+	return &createdEntry, nil
 }
