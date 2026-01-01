@@ -95,7 +95,7 @@ func (c *Client) dumpResponseBody(resp *http.Response) error {
 }
 
 // GetServiceDocument retrieves and parses a Service Document (RFC 5023 8.  Service Documents)
-func (c *Client) GetServiceDocument(ctx context.Context, url string) (*ServiceDocument, error) {
+func (c *Client) GetServiceDocument(ctx context.Context, url string) (*GetServiceDocumentResponse, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, fmt.Errorf("do request: %w", err)
@@ -110,10 +110,19 @@ func (c *Client) GetServiceDocument(ctx context.Context, url string) (*ServiceDo
 	if err := xml.NewDecoder(resp.Body).Decode(&sdoc); err != nil {
 		return nil, fmt.Errorf("decode service document: %w", err)
 	}
-	return &sdoc, nil
+	return &GetServiceDocumentResponse{
+		Headers: resp.Header,
+		Body:    sdoc,
+	}, nil
 }
 
-func (c *Client) CreateEntry(ctx context.Context, collectionURL string, entry *Entry) (*Entry, error) {
+type GetServiceDocumentResponse struct {
+	Headers http.Header
+	Body    ServiceDocument
+}
+
+// CreateEntry creates a new entry in a collection
+func (c *Client) CreateEntry(ctx context.Context, collectionURL string, entry *Entry) (*CreateEntryResponse, error) {
 	body, err := xml.Marshal(entry)
 	if err != nil {
 		return nil, fmt.Errorf("marshal entry: %w", err)
@@ -133,5 +142,13 @@ func (c *Client) CreateEntry(ctx context.Context, collectionURL string, entry *E
 	if err := xml.NewDecoder(resp.Body).Decode(&createdEntry); err != nil {
 		return nil, fmt.Errorf("decode created entry: %w", err)
 	}
-	return &createdEntry, nil
+	return &CreateEntryResponse{
+		Headers: resp.Header,
+		Body:    createdEntry,
+	}, nil
+}
+
+type CreateEntryResponse struct {
+	Headers http.Header
+	Body    Entry
 }
