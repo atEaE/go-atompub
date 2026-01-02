@@ -94,7 +94,7 @@ func (c *Client) dumpResponseBody(resp *http.Response) error {
 	return nil
 }
 
-// GetServiceDocument retrieves and parses a Service Document (RFC 5023 8.  Service Documents)
+// GetServiceDocument retrieves and parses a Service Document (RFC 5023 8. Service Documents)
 func (c *Client) GetServiceDocument(ctx context.Context, url string) (*GetServiceDocumentResponse, error) {
 	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -119,6 +119,33 @@ func (c *Client) GetServiceDocument(ctx context.Context, url string) (*GetServic
 type GetServiceDocumentResponse struct {
 	Headers http.Header
 	Body    ServiceDocument
+}
+
+// GetFeed retrieves and parses a Collection Feed (RFC 5023 10. Listing Collections)
+func (c *Client) GetFeed(ctx context.Context, url string) (*GetFeedResponse, error) {
+	resp, err := c.doRequest(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, fmt.Errorf("do request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	var feed Feed
+	if err := xml.NewDecoder(resp.Body).Decode(&feed); err != nil {
+		return nil, fmt.Errorf("decode feed: %w", err)
+	}
+	return &GetFeedResponse{
+		Headers: resp.Header,
+		Body:    feed,
+	}, nil
+}
+
+type GetFeedResponse struct {
+	Headers http.Header
+	Body    Feed
 }
 
 // CreateEntry creates a new entry in a collection

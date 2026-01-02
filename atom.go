@@ -5,6 +5,13 @@ import (
 	"time"
 )
 
+// Feed represents an Atom Feed Document (RFC 4287)
+type Feed struct {
+	XMLName xml.Name `xml:"http://www.w3.org/2005/Atom feed"`
+	ID      string   `xml:"id"`
+	Entries []Entry  `xml:"entry"`
+}
+
 // Entry represents an Atom Entry (RFC 4287)
 type Entry struct {
 	XMLName    xml.Name   `xml:"http://www.w3.org/2005/Atom entry"`
